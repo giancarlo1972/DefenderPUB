@@ -1,0 +1,1 @@
+On DC, djoin.exe /provision /domain mountainside.local /machine %computername% /savefile blob.txt; on device, djoin.exe /requestodj /loadfile blob.txt /windowspath %windir% /localos
