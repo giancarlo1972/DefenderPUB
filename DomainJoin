@@ -1,0 +1,1 @@
+Add-Computer -DomainName mountainside.local -Credential (Get-Credential) -Restart
