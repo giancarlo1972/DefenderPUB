@@ -1,0 +1,9 @@
+Package Settings
+
+| Setting           | Recommended Value                        | Why                                    |
+| ----------------- | ---------------------------------------- | -------------------------------------- |
+| Name              | Windows Security Compliance - Full Audit | Clear, descriptive                     |
+| Run as            | System                                   | Required for registry/Defender changes |
+| 64-bit PowerShell | Yes                                      | Better compatibility                   |
+| Signature check   | No                                       | Unless you sign scripts                |
+| Schedule          | Daily at 2 AM                            | Off-hours, minimal user impact         
