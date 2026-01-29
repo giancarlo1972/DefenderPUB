@@ -1,0 +1,234 @@
+# Windos Security Audit detection script
+@'
+# Detection: Check ALL Windows Security compliance settings (CORRECTED)
+# Exit 0 = compliant, Exit 1 = remediation needed
+
+$ErrorActionPreference = "Stop"
+$allCompliant = $true
+
+Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "WINDOWS SECURITY COMPLIANCE CHECK (FIXED)" -ForegroundColor Cyan
+Write-Host "========================================`n" -ForegroundColor Cyan
+
+# 1. CONTROLLED FOLDER ACCESS
+Write-Host "[1] Controlled Folder Access" -ForegroundColor Yellow
+try {
+    $cfa = Get-MpPreference | Select-Object -ExpandProperty EnableControlledFolderAccess
+    if ($cfa -eq 1) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ DISABLED" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ✗ ERROR: $_" -ForegroundColor Red
+    $allCompliant = $false
+}
+
+# 2. CORE ISOLATION (Memory Integrity)
+Write-Host "[2] Core Isolation (Memory Integrity/HVCI)" -ForegroundColor Yellow
+try {
+    $hvci = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity" -Name "Enabled" -ErrorAction SilentlyContinue
+    if ($hvci.Enabled -eq 1) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ DISABLED" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ✗ NOT CONFIGURED" -ForegroundColor Red
+    $allCompliant = $false
+}
+
+# 3. MEMORY ACCESS PROTECTION (DMA)
+Write-Host "[3] Memory Access Protection (Kernel DMA Protection)" -ForegroundColor Yellow
+try {
+    $dma = Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -ClassName Win32_DeviceGuard -ErrorAction SilentlyContinue
+    if ($dma.KernelDmaProtectionStatus -eq 2) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ⚠️  Hardware/BIOS dependent" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "    ⚠️  Unable to check (hardware dependent)" -ForegroundColor Yellow
+}
+
+# 4. FIRMWARE PROTECTION
+Write-Host "[4] Firmware Protection (System Guard Secure Launch)" -ForegroundColor Yellow
+try {
+    $fw = Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -ClassName Win32_DeviceGuard -ErrorAction SilentlyContinue
+    if ($fw.SystemGuardSecureLaunchConfigured -eq 1) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ⚠️  Hardware/BIOS dependent" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "    ⚠️  Unable to check (hardware dependent)" -ForegroundColor Yellow
+}
+
+# 5. TAMPER PROTECTION (NOT LSA Protection - this is what the UI shows)
+Write-Host "[5] Tamper Protection" -ForegroundColor Yellow
+try {
+    $tamper = Get-MpComputerStatus | Select-Object -ExpandProperty IsTamperProtected
+    if ($tamper) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ DISABLED" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ✗ ERROR: $_" -ForegroundColor Red
+    $allCompliant = $false
+}
+
+# 6. CREDENTIAL GUARD
+Write-Host "[6] Credential Guard" -ForegroundColor Yellow
+try {
+    $cg = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name "LsaCfgFlags" -ErrorAction SilentlyContinue
+    if ($cg.LsaCfgFlags -eq 1 -or $cg.LsaCfgFlags -eq 2) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ DISABLED" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ✗ NOT CONFIGURED" -ForegroundColor Red
+    $allCompliant = $false
+}
+
+# 7. VULNERABLE DRIVER BLOCKLIST
+Write-Host "[7] Microsoft Vulnerable Driver Blocklist" -ForegroundColor Yellow
+try {
+    $vdb = Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Name "DisableVulnerableDriverBlocklist" -ErrorAction SilentlyContinue
+    if ($null -eq $vdb -or $vdb.DisableVulnerableDriverBlocklist -eq 0) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ DISABLED" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ✓ ENABLED (default)" -ForegroundColor Green
+}
+
+# 8. SECURE BOOT
+Write-Host "[8] Secure Boot" -ForegroundColor Yellow
+try {
+    $sb = Confirm-SecureBootUEFI
+    if ($sb) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ DISABLED" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ⚠️  Unable to check (UEFI/BIOS setting)" -ForegroundColor Yellow
+}
+
+# 9. SECURITY PROCESSOR (TPM 2.0) - FIXED VERSION CHECK
+Write-Host "[9] Security Processor (TPM 2.0)" -ForegroundColor Yellow
+try {
+    $tpm = Get-Tpm
+    $tpmVersion = $tpm.ManufacturerVersionFull20
+    if ($tpm.TpmPresent -and $tpm.TpmReady) {
+        Write-Host "    ✓ TPM ENABLED and READY (Version: $tpmVersion)" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ TPM not ready" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ✗ ERROR checking TPM: $_" -ForegroundColor Red
+    $allCompliant = $false
+}
+
+# 10. REAL-TIME PROTECTION
+Write-Host "[10] Real-time Protection" -ForegroundColor Yellow
+try {
+    $rtp = Get-MpPreference | Select-Object -ExpandProperty DisableRealtimeMonitoring
+    if ($rtp -eq $false) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ DISABLED" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ✗ ERROR: $_" -ForegroundColor Red
+    $allCompliant = $false
+}
+
+# 11. CLOUD-DELIVERED PROTECTION
+Write-Host "[11] Cloud-delivered Protection" -ForegroundColor Yellow
+try {
+    $cloud = Get-MpPreference | Select-Object -ExpandProperty MAPSReporting
+    if ($cloud -ne 0) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ DISABLED" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ✗ ERROR: $_" -ForegroundColor Red
+    $allCompliant = $false
+}
+
+# 12. AUTOMATIC SAMPLE SUBMISSION
+Write-Host "[12] Automatic Sample Submission" -ForegroundColor Yellow
+try {
+    $sample = Get-MpPreference | Select-Object -ExpandProperty SubmitSamplesConsent
+    if ($sample -eq 1 -or $sample -eq 3) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ DISABLED" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ✗ ERROR: $_" -ForegroundColor Red
+    $allCompliant = $false
+}
+
+# 13. PUA PROTECTION
+Write-Host "[13] Potentially Unwanted App (PUA) Blocking" -ForegroundColor Yellow
+try {
+    $pua = Get-MpPreference | Select-Object -ExpandProperty PUAProtection
+    if ($pua -eq 1) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ DISABLED" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ✗ ERROR: $_" -ForegroundColor Red
+    $allCompliant = $false
+}
+
+# 14. SMARTSCREEN FOR STORE APPS
+Write-Host "[14] SmartScreen for Microsoft Store Apps" -ForegroundColor Yellow
+try {
+    $ssStore = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AppHost" -Name "EnableWebContentEvaluation" -ErrorAction SilentlyContinue
+    if ($null -eq $ssStore -or $ssStore.EnableWebContentEvaluation -eq 1) {
+        Write-Host "    ✓ ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "    ✗ DISABLED" -ForegroundColor Red
+        $allCompliant = $false
+    }
+} catch {
+    Write-Host "    ✓ ENABLED (default)" -ForegroundColor Green
+}
+
+# FINAL RESULT
+Write-Host "`n========================================" -ForegroundColor Cyan
+if ($allCompliant) {
+    Write-Host "RESULT: COMPLIANT ✓" -ForegroundColor Green
+    Write-Host "========================================" -ForegroundColor Cyan
+    exit 0
+} else {
+    Write-Host "RESULT: NON-COMPLIANT - Remediation Needed ✗" -ForegroundColor Red
+    Write-Host "========================================" -ForegroundColor Cyan
+    exit 1
+}
+'@ | Out-File -FilePath "C:\Temp\Detect-WindowsSecurityFixed.ps1" -Encoding UTF8 -Force
+
+Write-Host "✓ FIXED script saved to C:\Temp\Detect-WindowsSecurityFixed.ps1" -ForegroundColor Green
+Write-Host "Now running corrected detection...`n" -ForegroundColor Cyan
+
+# Run it
+powershell.exe -ExecutionPolicy Bypass -File "C:\Temp\Detect-WindowsSecurityFixed.ps1"
