@@ -1,0 +1,139 @@
+# Remediation script
+@'
+# Remediation: Enable ALL Windows Security compliance settings
+# Exit 0 = success, Exit 1 = failure
+
+$ErrorActionPreference = "Continue"
+$remediationSuccess = $true
+
+Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "WINDOWS SECURITY REMEDIATION" -ForegroundColor Cyan
+Write-Host "========================================`n" -ForegroundColor Cyan
+
+# 1. ENABLE CONTROLLED FOLDER ACCESS
+Write-Host "[1] Enabling Controlled Folder Access..." -ForegroundColor Yellow
+try {
+    Set-MpPreference -EnableControlledFolderAccess Enabled -ErrorAction Stop
+    Write-Host "    ✓ SUCCESS" -ForegroundColor Green
+} catch {
+    Write-Host "    ✗ FAILED: $_" -ForegroundColor Red
+    $remediationSuccess = $false
+}
+
+# 2. ENABLE CORE ISOLATION (Memory Integrity)
+Write-Host "[2] Enabling Core Isolation (Memory Integrity)..." -ForegroundColor Yellow
+try {
+    $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity"
+    if (-not (Test-Path $regPath)) {
+        New-Item -Path $regPath -Force | Out-Null
+    }
+    Set-ItemProperty -Path $regPath -Name "Enabled" -Value 1 -ErrorAction Stop
+    Write-Host "    ✓ SUCCESS (Reboot required)" -ForegroundColor Green
+} catch {
+    Write-Host "    ✗ FAILED: $_" -ForegroundColor Red
+    $remediationSuccess = $false
+}
+
+# 3. ENABLE TAMPER PROTECTION
+Write-Host "[3] Enabling Tamper Protection..." -ForegroundColor Yellow
+try {
+    Set-MpPreference -DisableTamperProtection $false -ErrorAction Stop
+    Write-Host "    ✓ SUCCESS" -ForegroundColor Green
+} catch {
+    Write-Host "    ⚠️  May require manual enable or Intune policy" -ForegroundColor Yellow
+}
+
+# 4. ENABLE CREDENTIAL GUARD
+Write-Host "[4] Enabling Credential Guard..." -ForegroundColor Yellow
+try {
+    Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name "LsaCfgFlags" -Value 1 -ErrorAction Stop
+    Write-Host "    ✓ SUCCESS (Reboot required)" -ForegroundColor Green
+} catch {
+    Write-Host "    ✗ FAILED: $_" -ForegroundColor Red
+    $remediationSuccess = $false
+}
+
+# 5. ENABLE VULNERABLE DRIVER BLOCKLIST
+Write-Host "[5] Enabling Vulnerable Driver Blocklist..." -ForegroundColor Yellow
+try {
+    $defenderPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender"
+    if (-not (Test-Path $defenderPath)) {
+        New-Item -Path $defenderPath -Force | Out-Null
+    }
+    Set-ItemProperty -Path $defenderPath -Name "DisableVulnerableDriverBlocklist" -Value 0 -ErrorAction Stop
+    Write-Host "    ✓ SUCCESS" -ForegroundColor Green
+} catch {
+    Write-Host "    ✗ FAILED: $_" -ForegroundColor Red
+    $remediationSuccess = $false
+}
+
+# 6. ENABLE REAL-TIME PROTECTION
+Write-Host "[6] Enabling Real-time Protection..." -ForegroundColor Yellow
+try {
+    Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction Stop
+    Write-Host "    ✓ SUCCESS" -ForegroundColor Green
+} catch {
+    Write-Host "    ✗ FAILED: $_" -ForegroundColor Red
+    $remediationSuccess = $false
+}
+
+# 7. ENABLE CLOUD-DELIVERED PROTECTION
+Write-Host "[7] Enabling Cloud-delivered Protection..." -ForegroundColor Yellow
+try {
+    Set-MpPreference -MAPSReporting Advanced -ErrorAction Stop
+    Write-Host "    ✓ SUCCESS" -ForegroundColor Green
+} catch {
+    Write-Host "    ✗ FAILED: $_" -ForegroundColor Red
+    $remediationSuccess = $false
+}
+
+# 8. ENABLE AUTOMATIC SAMPLE SUBMISSION
+Write-Host "[8] Enabling Automatic Sample Submission..." -ForegroundColor Yellow
+try {
+    Set-MpPreference -SubmitSamplesConsent SendAllSamples -ErrorAction Stop
+    Write-Host "    ✓ SUCCESS" -ForegroundColor Green
+} catch {
+    Write-Host "    ✗ FAILED: $_" -ForegroundColor Red
+    $remediationSuccess = $false
+}
+
+# 9. ENABLE PUA PROTECTION
+Write-Host "[9] Enabling PUA Protection..." -ForegroundColor Yellow
+try {
+    Set-MpPreference -PUAProtection Enabled -ErrorAction Stop
+    Write-Host "    ✓ SUCCESS" -ForegroundColor Green
+} catch {
+    Write-Host "    ✗ FAILED: $_" -ForegroundColor Red
+    $remediationSuccess = $false
+}
+
+# 10. ENABLE SMARTSCREEN FOR STORE APPS
+Write-Host "[10] Enabling SmartScreen for Store Apps..." -ForegroundColor Yellow
+try {
+    $appHostPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\AppHost"
+    if (-not (Test-Path $appHostPath)) {
+        New-Item -Path $appHostPath -Force | Out-Null
+    }
+    Set-ItemProperty -Path $appHostPath -Name "EnableWebContentEvaluation" -Value 1 -ErrorAction Stop
+    Write-Host "    ✓ SUCCESS" -ForegroundColor Green
+} catch {
+    Write-Host "    ✗ FAILED: $_" -ForegroundColor Red
+    $remediationSuccess = $false
+}
+
+# FINAL RESULT
+Write-Host "`n========================================" -ForegroundColor Cyan
+if ($remediationSuccess) {
+    Write-Host "REMEDIATION COMPLETE ✓" -ForegroundColor Green
+    Write-Host "Note: Reboot required for some settings" -ForegroundColor Yellow
+    Write-Host "========================================" -ForegroundColor Cyan
+    exit 0
+} else {
+    Write-Host "REMEDIATION PARTIALLY FAILED ✗" -ForegroundColor Red
+    Write-Host "Check errors above for details" -ForegroundColor Yellow
+    Write-Host "========================================" -ForegroundColor Cyan
+    exit 1
+}
+'@ | Out-File -FilePath "C:\Temp\Remediate-WindowsSecurityFixed.ps1" -Encoding UTF8 -Force
+
+Write-Host "✓ Remediation script created at C:\Temp\Remediate-WindowsSecurityFixed.ps1" -ForegroundColor Green
