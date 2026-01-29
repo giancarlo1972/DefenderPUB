@@ -1,1 +1,8 @@
-# Online and Offline Join - Domain
+# Daily Tools - Management
+
+
+Intune
+Defender
+Servers 
+
+
